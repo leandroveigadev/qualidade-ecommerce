@@ -1,0 +1,25 @@
+datasets:
+  devolucoes:
+    nome_fonte: "Base de Devoluções"
+    colunas_obrigatorias:
+      - "NFD"
+      - "DT_DEV"
+      - "DEVOLUÇÃO"
+      - "Motivo"
+      - "Falha"
+    colunas_numericas:
+      - "QTD"
+      - "FRETE"
+      - "DEVOLUÇÃO"
+    colunas_data:
+      - "DT_FATU"
+      - "DT_DEV"
+    colunas_classificacao:
+      - "RESPONSÁVEL"
+      - "Solicitação"
+      - "Motivo"
+      - "SubMotivo"
+      - "Falha"
+      - "Transporte"
+      - "Entrega"
+      - "Status"
