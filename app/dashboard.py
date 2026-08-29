@@ -2,30 +2,34 @@ import streamlit as st
 import duckdb
 import pandas as pd
 import plotly.express as px
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
+from datetime import date
 import os
 
-#Configuração da página
+# Configuração da página
 st.set_page_config(
     page_title="Plataforma de Gestão de Qualidade - E-commerce",
     page_icon="📊",
     layout="wide"
 )
 
-#Caminhos
+# Caminhos
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DB_PATH = os.path.join(BASE_DIR, 'data', 'database', 'qualidade.duckdb')
 
 @st.cache_resource
 def get_connection():
-    return duckdb.connect(DB_PATH, read_only=True)
+    # CORREÇÃO: Conexão precisa permitir gravação (sem read_only=True) para salvar os Planos de Ação
+    return duckdb.connect(DB_PATH)
 
 conn = get_connection()
 
-#Título Principal
+# Título Principal
 st.title("📊 Plataforma de Gestão de Qualidade | E-commerce")
 st.markdown("Monitoramento de devoluções, ofensores e indicadores operacionais.")
 
-#Sidebar de Filtros Globais
+# Sidebar de Filtros Globais
 st.sidebar.header("🔍 Filtros Globais")
 try:
     responsaveis = ["TODOS"] + [r[0] for r in conn.execute("SELECT DISTINCT RESPONSÁVEL FROM fact_devolucoes ORDER BY 1").fetchall()]
@@ -33,7 +37,7 @@ try:
 except Exception:
     resp_selecionado = "TODOS"
 
-#Construção da Query Base com Filtro
+# Construção da Query Base com Filtro
 query_base = "SELECT * FROM fact_devolucoes WHERE 1=1"
 if resp_selecionado != "TODOS":
     query_base += f" AND RESPONSÁVEL = '{resp_selecionado}'"
@@ -43,7 +47,9 @@ df_view = conn.execute(query_base).df()
 if df_view.empty:
     st.warning("Nenhum dado encontrado para o filtro selecionado.")
 else:
-    #KPIs Executivos
+    # ==========================================
+    # 1. KPIs Executivos
+    # ==========================================
     total_ocorrencias = len(df_view['NFD'].unique())
     total_itens = df_view['QTD'].sum()
     valor_total = df_view['DEVOLUÇÃO'].sum()
@@ -57,7 +63,9 @@ else:
 
     st.markdown("---")
 
-    #Visão Gráfica: Top Ofensores por Motivo e Responsável
+    # ==========================================
+    # 2. Visão Gráfica: Top Ofensores por Motivo e Responsável
+    # ==========================================
     col_l, col_r = st.columns(2)
 
     with col_l:
@@ -75,7 +83,9 @@ else:
 
     st.markdown("---")
 
-    #Análise por Linha de Produto e Fabricante
+    # ==========================================
+    # 3. Análise por Linha de Produto e Fabricante
+    # ==========================================
     col_l2, col_r2 = st.columns(2)
     
     with col_l2:
@@ -93,9 +103,12 @@ else:
 
     st.markdown("---")
 
-    #Tabela de Detalhamento / Dados Brutos Tratados
+    # ==========================================
+    # 4. Tabela de Detalhamento / Dados Brutos Tratados
+    # ==========================================
     st.subheader("🔍 Detalhamento Analítico das Ocorrências")
     st.dataframe(df_view[['DT_DEV', 'NFD', 'RESPONSÁVEL', 'Motivo', 'SubMotivo', 'FABRICANTE', 'DESCRIÇÃO', 'DEVOLUÇÃO']], use_container_width=True)
+    
     st.markdown("---")
     st.header("🎯 Inteligência e Priorização")
 
@@ -103,7 +116,7 @@ else:
 
     with col_matriz:
         st.subheader("📍 Matriz Frequência x Impacto (Por SubMotivo)")
-        #Agrupando dados para a matriz
+        # Agrupando dados para a matriz
         df_matriz = df_view.groupby('SubMotivo').agg(
             Frequencia=('NFD', 'nunique'),
             Impacto=('DEVOLUÇÃO', 'sum')
@@ -129,15 +142,12 @@ else:
 
     with col_pareto:
         st.subheader("📈 Curva de Pareto (Ofensores)")
-        #Escolhe a dimensão para o Pareto
+        # Escolhe a dimensão para o Pareto
         dimensao_pareto = st.selectbox("Analisar Pareto por:", ['FABRICANTE', 'Transportadora', 'Falha'])
         
         df_pareto = df_view.groupby(dimensao_pareto)['DEVOLUÇÃO'].sum().reset_index()
         df_pareto = df_pareto.sort_values(by='DEVOLUÇÃO', ascending=False)
         df_pareto['% Acumulado'] = (df_pareto['DEVOLUÇÃO'].cumsum() / df_pareto['DEVOLUÇÃO'].sum()) * 100
-        
-        from plotly.subplots import make_subplots
-        import plotly.graph_objects as go
         
         fig_pareto = make_subplots(specs=[[{"secondary_y": True}]])
         fig_pareto.add_trace(go.Bar(x=df_pareto[dimensao_pareto], y=df_pareto['DEVOLUÇÃO'], name="Impacto R$"), secondary_y=False)
@@ -150,7 +160,9 @@ else:
 
     st.markdown("---")
     
-    #Módulo de (Qualidade dos Dados)
+    # ==========================================
+    # 5. Módulo de (Qualidade dos Dados)
+    # ==========================================
     st.header("🚨 Saúde e Qualidade dos Dados")
     col_dq1, col_dq2 = st.columns(2)
     
@@ -163,9 +175,87 @@ else:
         
     with col_dq2:
         st.warning("Inconsistência de Chave (NFD)")
-        #Identificando NFDs com mais de um responsável ou motivo
+        # Identificando NFDs com mais de um responsável ou motivo
         inconsistencias = df_view.groupby('NFD').agg(Qtd_Responsaveis=('RESPONSÁVEL', 'nunique')).reset_index()
         nfd_problematicas = inconsistencias[inconsistencias['Qtd_Responsaveis'] > 1]
         st.metric("NFDs com Conflito de Informação", f"{len(nfd_problematicas)} identificadas")
         if not nfd_problematicas.empty:
             st.write("Exemplo de NFD conflitante:", nfd_problematicas['NFD'].iloc[0])
+            
+    # ==========================================
+    # 6. MÓDULO DE PLANOS DE AÇÃO
+    # ==========================================
+    st.markdown("---")
+    st.header("📋 Planos de Ação e Gestão Corretiva")
+
+    # Criando tabela de planos de ação no DuckDB caso não exista
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS fact_planos_acao (
+            id_acao INTEGER PRIMARY KEY,
+            data_criacao DATE,
+            problema VARCHAR,
+            responsavel VARCHAR,
+            acao_corretiva VARCHAR,
+            prazo DATE,
+            prioridade VARCHAR,
+            status VARCHAR
+        );
+    """)
+
+    # Abas para Organizar: Visualizar Existentes x Criar Nova Ação
+    tab_lista, tab_novo = st.tabs(["📂 Acompanhar Planos", "➕ Nova Ação Corretiva"])
+
+    with tab_lista:
+        df_acoes = conn.execute("SELECT * FROM fact_planos_acao").df()
+        if df_acoes.empty:
+            st.info("Nenhum plano de ação cadastrado no momento. Utilize a aba ao lado para criar o primeiro.")
+        else:
+            # Cálculo de SLA / Dias Restantes
+            df_acoes['prazo'] = pd.to_datetime(df_acoes['prazo']).dt.date
+            df_acoes['Dias Restantes'] = df_acoes['prazo'].apply(lambda x: (x - date.today()).days)
+            
+            def get_status_sla(row):
+                if row['status'] == 'Concluído':
+                    return 'Concluído'
+                elif row['Dias Restantes'] < 0:
+                    return '🔴 Atrasado'
+                elif row['Dias Restantes'] <= 3:
+                    return '🟡 Atenção (Próximo ao Prazo)'
+                else:
+                    return '🟢 No Prazo'
+
+            df_acoes['SLA'] = df_acoes.apply(get_status_sla, axis=1)
+            st.dataframe(df_acoes[['id_acao', 'data_criacao', 'problema', 'responsavel', 'acao_corretiva', 'prazo', 'prioridade', 'status', 'SLA']], use_container_width=True)
+
+    with tab_novo:
+        st.subheader("Registrar Nova Ação Corretiva")
+        with st.form("form_plano_acao"):
+            col_f1, col_f2 = st.columns(2)
+            with col_f1:
+                problema_rel = st.text_input("Problema / Ofensor Identificado")
+                responsavel_acao = st.text_input("Responsável pela Ação (Ex: João - Logística)")
+                prioridade_acao = st.selectbox("Prioridade", ["Alta", "Média", "Baixa"])
+            with col_f2:
+                prazo_acao = st.date_input("Prazo Limite (SLA)")
+                status_acao = st.selectbox("Status Inicial", ["Aberto", "Em Andamento", "Aguardando Evidência", "Concluído"])
+            
+            acao_corretiva = st.text_area("Descrição da Ação Corretiva / Preventiva")
+            
+            submitted = st.form_submit_button("Salvar Plano de Ação")
+            if submitted:
+                if problema_rel and responsavel_acao and acao_corretiva:
+                    # Gerar ID sequencial simples
+                    max_id = conn.execute("SELECT COALESCE(MAX(id_acao), 0) FROM fact_planos_acao").fetchone()[0]
+                    novo_id = max_id + 1
+                    hoje = date.today().isoformat()
+                    
+                    conn.execute(f"""
+                        INSERT INTO fact_planos_acao VALUES (
+                            {novo_id}, '{hoje}', '{problema_rel}', '{responsavel_acao}', 
+                            '{acao_corretiva}', '{prazo_acao}', '{prioridade_acao}', '{status_acao}'
+                        )
+                    """)
+                    st.success(f"Plano de Ação #{novo_id} cadastrado com sucesso!")
+                    st.rerun()
+                else:
+                    st.error("Preencha todos os campos obrigatórios.")
