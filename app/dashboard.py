@@ -7,29 +7,29 @@ from plotly.subplots import make_subplots
 from datetime import date
 import os
 
-# Configuração da página
+#Configuração da página
 st.set_page_config(
     page_title="Plataforma de Gestão de Qualidade - E-commerce",
     page_icon="📊",
     layout="wide"
 )
 
-# Caminhos
+#Caminhos
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DB_PATH = os.path.join(BASE_DIR, 'data', 'database', 'qualidade.duckdb')
 
 @st.cache_resource
 def get_connection():
-    # CORREÇÃO: Conexão precisa permitir gravação (sem read_only=True) para salvar os Planos de Ação
+    #CORREÇÃO: Conexão precisa permitir gravação (sem read_only=True) para salvar os Planos de Ação
     return duckdb.connect(DB_PATH)
 
 conn = get_connection()
 
-# Título Principal
+#Título Principal
 st.title("📊 Plataforma de Gestão de Qualidade | E-commerce")
 st.markdown("Monitoramento de devoluções, ofensores e indicadores operacionais.")
 
-# Sidebar de Filtros Globais
+#Sidebar de Filtros Globais
 st.sidebar.header("🔍 Filtros Globais")
 try:
     responsaveis = ["TODOS"] + [r[0] for r in conn.execute("SELECT DISTINCT RESPONSÁVEL FROM fact_devolucoes ORDER BY 1").fetchall()]
@@ -37,7 +37,7 @@ try:
 except Exception:
     resp_selecionado = "TODOS"
 
-# Construção da Query Base com Filtro
+#Construção da Query Base com Filtro
 query_base = "SELECT * FROM fact_devolucoes WHERE 1=1"
 if resp_selecionado != "TODOS":
     query_base += f" AND RESPONSÁVEL = '{resp_selecionado}'"
@@ -47,9 +47,9 @@ df_view = conn.execute(query_base).df()
 if df_view.empty:
     st.warning("Nenhum dado encontrado para o filtro selecionado.")
 else:
-    # ==========================================
-    # 1. KPIs Executivos
-    # ==========================================
+    
+    #KPIs Executivos
+   
     total_ocorrencias = len(df_view['NFD'].unique())
     total_itens = df_view['QTD'].sum()
     valor_total = df_view['DEVOLUÇÃO'].sum()
@@ -63,9 +63,9 @@ else:
 
     st.markdown("---")
 
-    # ==========================================
-    # 2. Visão Gráfica: Top Ofensores por Motivo e Responsável
-    # ==========================================
+    
+    #Visão Gráfica: Top Ofensores por Motivo e Responsável
+    
     col_l, col_r = st.columns(2)
 
     with col_l:
@@ -83,9 +83,9 @@ else:
 
     st.markdown("---")
 
-    # ==========================================
-    # 3. Análise por Linha de Produto e Fabricante
-    # ==========================================
+    
+    #Análise por Linha de Produto e Fabricante
+    
     col_l2, col_r2 = st.columns(2)
     
     with col_l2:
@@ -103,9 +103,9 @@ else:
 
     st.markdown("---")
 
-    # ==========================================
-    # 4. Tabela de Detalhamento / Dados Brutos Tratados
-    # ==========================================
+    
+    #Tabela de Detalhamento / Dados Brutos Tratados
+    
     st.subheader("🔍 Detalhamento Analítico das Ocorrências")
     st.dataframe(df_view[['DT_DEV', 'NFD', 'RESPONSÁVEL', 'Motivo', 'SubMotivo', 'FABRICANTE', 'DESCRIÇÃO', 'DEVOLUÇÃO']], use_container_width=True)
     
@@ -116,13 +116,13 @@ else:
 
     with col_matriz:
         st.subheader("📍 Matriz Frequência x Impacto (Por SubMotivo)")
-        # Agrupando dados para a matriz
+        #Agrupa dados para a matriz
         df_matriz = df_view.groupby('SubMotivo').agg(
             Frequencia=('NFD', 'nunique'),
             Impacto=('DEVOLUÇÃO', 'sum')
         ).reset_index()
         
-        # Remove 'NÃO CLASSIFICADO' para não distorcer a análise de negócio
+        #Remove 'NÃO CLASSIFICADO' para não distorcer a análise de negócio
         df_matriz = df_matriz[df_matriz['SubMotivo'] != 'NÃO CLASSIFICADO']
 
         if not df_matriz.empty:
@@ -142,7 +142,7 @@ else:
 
     with col_pareto:
         st.subheader("📈 Curva de Pareto (Ofensores)")
-        # Escolhe a dimensão para o Pareto
+        #Escolhe a dimensão para o Pareto
         dimensao_pareto = st.selectbox("Analisar Pareto por:", ['FABRICANTE', 'Transportadora', 'Falha'])
         
         df_pareto = df_view.groupby(dimensao_pareto)['DEVOLUÇÃO'].sum().reset_index()
@@ -160,9 +160,9 @@ else:
 
     st.markdown("---")
     
-    # ==========================================
-    # 5. Módulo de (Qualidade dos Dados)
-    # ==========================================
+    
+    #Módulo de (Qualidade dos Dados)
+   
     st.header("🚨 Saúde e Qualidade dos Dados")
     col_dq1, col_dq2 = st.columns(2)
     
@@ -175,20 +175,20 @@ else:
         
     with col_dq2:
         st.warning("Inconsistência de Chave (NFD)")
-        # Identificando NFDs com mais de um responsável ou motivo
+        #Identificando NFDs com mais de um responsável ou motivo
         inconsistencias = df_view.groupby('NFD').agg(Qtd_Responsaveis=('RESPONSÁVEL', 'nunique')).reset_index()
         nfd_problematicas = inconsistencias[inconsistencias['Qtd_Responsaveis'] > 1]
         st.metric("NFDs com Conflito de Informação", f"{len(nfd_problematicas)} identificadas")
         if not nfd_problematicas.empty:
             st.write("Exemplo de NFD conflitante:", nfd_problematicas['NFD'].iloc[0])
             
-    # ==========================================
-    # 6. MÓDULO DE PLANOS DE AÇÃO
-    # ==========================================
+    
+    
+    #MÓDULO DE PLANOS DE AÇÃO
     st.markdown("---")
     st.header("📋 Planos de Ação e Gestão Corretiva")
 
-    # Criando tabela de planos de ação no DuckDB caso não exista
+    #Criando tabela de planos de ação no DuckDB caso não exista
     conn.execute("""
         CREATE TABLE IF NOT EXISTS fact_planos_acao (
             id_acao INTEGER PRIMARY KEY,
@@ -202,7 +202,7 @@ else:
         );
     """)
 
-    # Abas para Organizar: Visualizar Existentes x Criar Nova Ação
+    #Abas para Organizar: Visualizar Existentes x Criar Nova Ação
     tab_lista, tab_novo = st.tabs(["📂 Acompanhar Planos", "➕ Nova Ação Corretiva"])
 
     with tab_lista:
@@ -210,9 +210,9 @@ else:
         if df_acoes.empty:
             st.info("Nenhum plano de ação cadastrado no momento. Utilize a aba ao lado para criar o primeiro.")
         else:
-            # Cálculo de SLA / Dias Restantes
-            df_acoes['prazo'] = pd.to_datetime(df_acoes['prazo']).dt.date
-            df_acoes['Dias Restantes'] = df_acoes['prazo'].apply(lambda x: (x - date.today()).days)
+            #Cálculo de SLA / Dias Restantes
+            df_acoes['prazo_dt'] = pd.to_datetime(df_acoes['prazo']).dt.date
+            df_acoes['Dias Restantes'] = df_acoes['prazo_dt'].apply(lambda x: (x - date.today()).days)
             
             def get_status_sla(row):
                 if row['status'] == 'Concluído':
@@ -225,6 +225,9 @@ else:
                     return '🟢 No Prazo'
 
             df_acoes['SLA'] = df_acoes.apply(get_status_sla, axis=1)
+            df_acoes['data_criacao'] = pd.to_datetime(df_acoes['data_criacao']).dt.strftime('%d/%m/%Y')
+            df_acoes['prazo'] = pd.to_datetime(df_acoes['prazo']).dt.strftime('%d/%m/%Y')
+
             st.dataframe(df_acoes[['id_acao', 'data_criacao', 'problema', 'responsavel', 'acao_corretiva', 'prazo', 'prioridade', 'status', 'SLA']], use_container_width=True)
 
     with tab_novo:
@@ -236,6 +239,7 @@ else:
                 responsavel_acao = st.text_input("Responsável pela Ação (Ex: João - Logística)")
                 prioridade_acao = st.selectbox("Prioridade", ["Alta", "Média", "Baixa"])
             with col_f2:
+                
                 prazo_acao = st.date_input("Prazo Limite (SLA)")
                 status_acao = st.selectbox("Status Inicial", ["Aberto", "Em Andamento", "Aguardando Evidência", "Concluído"])
             
